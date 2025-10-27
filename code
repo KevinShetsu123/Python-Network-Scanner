@@ -1,0 +1,107 @@
+# network_scanner.py - Công cụ quét mạng và cổng nâng cấp
+
+import socket
+import ping3
+import ipaddress  # Thư viện có sẵn trong Python 3, dùng để xử lý dải IP
+import sys  # Dùng để thoát chương trình khi gặp lỗi
+
+
+# --- Chức năng 1: Kiểm tra Hoạt động (Ping) ---
+def check_host_status(ip_address):
+    """Kiểm tra xem Host có phản hồi (ping) hay không."""
+    try:
+        # Sử dụng ping3.ping. Timeout được đặt là 1.5 giây.
+        delay = ping3.ping(str(ip_address), timeout=1.5)
+
+        if isinstance(delay, float):
+            return True, delay * 1000  # Trả về True và thời gian phản hồi (ms)
+        else:
+            return False, None
+
+    except Exception:
+        return False, None
+
+
+# --- Chức năng 2: Quét Cổng (Port Scanner) ---
+def port_scan(ip_address, ports):
+    """Quét các cổng TCP được chỉ định trên Host."""
+    open_ports = []
+
+    for port in ports:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.5)
+
+        result = sock.connect_ex((str(ip_address), port))
+
+        if result == 0:
+            # Lấy tên dịch vụ
+            service = "Unknown"
+            try:
+                # Chỉ lấy tên dịch vụ cho các cổng tiêu chuẩn (dưới 1024)
+                if port < 1024:
+                    service = socket.getservbyport(port, "tcp")
+            except OSError:
+                pass
+
+            open_ports.append((port, service))
+
+        sock.close()
+
+    return open_ports
+
+
+# --- Khối Chính để Chạy Script và Xử lý Dải IP ---
+if __name__ == "__main__":
+
+    # Định nghĩa danh sách các cổng phổ biến để quét
+    common_ports = [21, 22, 23, 25, 53, 80, 110, 443, 3389, 8080]
+
+    print("🚀 PYTHON NETWORK SCANNER (VER 1.1)")
+    print("-----------------------------------")
+
+    target_input = input("Nhập IP mục tiêu hoặc Dải IP (ví dụ: 192.168.1.1 hoặc 192.168.1.0/24): ")
+
+    try:
+        # Kiểm tra xem đầu vào là dải mạng hay IP đơn lẻ
+        hosts_to_scan = ipaddress.ip_network(target_input, strict=False).hosts()
+        is_range = True
+    except ValueError:
+        # Nếu không phải dải mạng, coi là IP đơn lẻ
+        try:
+            hosts_to_scan = [ipaddress.ip_address(target_input)]
+            is_range = False
+        except ValueError:
+            print(f"[LỖI] Địa chỉ '{target_input}' không hợp lệ. Vui lòng kiểm tra lại.")
+            sys.exit(1)
+
+    # Biến đếm Host hoạt động
+    active_hosts_count = 0
+
+    # Bắt đầu quét từng Host
+    for host_ip in hosts_to_scan:
+
+        host_ip = str(host_ip)
+        print(f"\n[SCAN] Đang xử lý Host: {host_ip}")
+
+        # Bắt đầu kiểm tra trạng thái Host
+        is_up, response_time = check_host_status(host_ip)
+
+        if is_up:
+            active_hosts_count += 1
+            print(f"\t Host đang hoạt động (Phản hồi: {response_time:.2f}ms)")
+
+            # Tiến hành quét cổng
+            open_ports = port_scan(host_ip, common_ports)
+
+            if open_ports:
+                print(f"\t Cổng Mở Tìm Thấy:")
+                for port, service in open_ports:
+                    print(f"\t\t- {port}/TCP ({service})")
+            else:
+                print("\t Không tìm thấy cổng phổ biến nào đang mở.")
+        else:
+            if not is_range:  # Chỉ in thông báo nếu là IP đơn lẻ
+                print("\t Host không hoạt động hoặc không phản hồi Ping.")
+
+    print("\n-----------------------------------")
+    print(f"Tổng Host đang hoạt động: {active_hosts_count}")
